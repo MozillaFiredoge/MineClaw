@@ -222,27 +222,35 @@ const actions = {
     return { items: state.inventory };
   },
   
-  // 截图
-  screenshot: () => {
-    try {
-      const screenshotDir = path.join(__dirname, '..', 'screenshots');
-      if (!fs.existsSync(screenshotDir)) {
-        fs.mkdirSync(screenshotDir, { recursive: true });
-      }
-      
-      const filename = `screenshot_${Date.now()}.png`;
-      const filepath = path.join(screenshotDir, filename);
-      
-      bot.takeScreenshot().then(buffer => {
-        fs.writeFileSync(filepath, buffer);
-        state.lastScreenshot = filepath;
-        console.log(`[Mineflayer] Screenshot saved: ${filepath}`);
-      });
-      
-      return { path: filepath };
-    } catch (e) {
-      return { error: e.message };
+  // 截图 - 使用外部截图工具
+  screenshot: async () => {
+    const screenshotDir = path.join(__dirname, '..', 'screenshots');
+    if (!fs.existsSync(screenshotDir)) {
+      fs.mkdirSync(screenshotDir, { recursive: true });
     }
+    
+    const filename = `screenshot_${Date.now()}.png`;
+    const filepath = path.join(screenshotDir, filename);
+    
+    // 尝试使用外部截图工具
+    const screenshotTools = ['gnome-screenshot', 'scrot', 'import', 'screencapture'];
+    
+    for (const tool of screenshotTools) {
+      try {
+        const { execSync } = require('child_process');
+        execSync(`${tool} "${filepath}"`, { timeout: 5000 });
+        if (fs.existsSync(filepath)) {
+          state.lastScreenshot = filepath;
+          console.log(`[Mineflayer] Screenshot saved: ${filepath}`);
+          return { path: filepath, tool };
+        }
+      } catch (e) {
+        // 尝试下一个工具
+        continue;
+      }
+    }
+    
+    return { error: 'No screenshot tool available. Install gnome-screenshot, scrot, or ImageMagick.' };
   }
 };
 
