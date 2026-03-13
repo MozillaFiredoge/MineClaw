@@ -1,0 +1,124 @@
+# 动作提示词
+
+根据当前任务和游戏状态，选择合适的动作。
+
+## 动作格式
+
+```json
+{
+  "action": "动作名",
+  "params": {
+    "参数": "值"
+  }
+}
+```
+
+## 可用动作
+
+### 移动
+
+```json
+{
+  "action": "move",
+  "params": {
+    "direction": "forward|back|left|right",
+    "duration": 1.0
+  }
+}
+```
+
+### 跳跃
+
+```json
+{
+  "action": "jump",
+  "params": {}
+}
+```
+
+### 挖掘/攻击
+
+```json
+{
+  "action": "attack",
+  "params": {
+    "target": "zombie"  // 可选
+  }
+}
+```
+
+### 放置方块
+
+```json
+{
+  "action": "place_block",
+  "params": {
+    "position": {"x": 0, "y": -1, "z": 0},
+    "block": "minecraft:stone"
+  }
+}
+```
+
+### 合成
+
+```json
+{
+  "action": "craft",
+  "params": {
+    "recipe": "stick",
+    "count": 4
+  }
+}
+```
+
+### 视角
+
+```json
+{
+  "action": "look",
+  "params": {
+    "yaw": 90.0,
+    "pitch": 0.0
+  }
+}
+```
+
+### 使用物品
+
+```json
+{
+  "action": "use_item",
+  "params": {
+    "slot": 1  // 1-9 对应快捷栏
+  }
+}
+```
+
+## 决策指南
+
+### 任务: 挖掘资源
+
+1. 找到目标方块
+2. 移动到旁边
+3. 对准方块
+4. 攻击直到挖掘完成
+5. 捡起掉落物
+
+### 任务: 建造
+
+1. 确保有足够的方块
+2. 规划位置
+3. 逐层放置
+
+### 任务: 战斗
+
+1. 装备武器
+2. 接近敌怪
+3. 攻击
+4. 注意血量
+
+### 任务: 探索
+
+1. 四处移动
+2. 观察周围
+3. 记录有趣的位置

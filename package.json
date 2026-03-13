@@ -1,0 +1,28 @@
+{
+  "name": "openclaw-minecraft",
+  "version": "0.1.0",
+  "description": "OpenClaw Minecraft Agent - 让 AI 玩 Minecraft",
+  "main": "index.js",
+  "scripts": {
+    "start": "node scripts/start_bot.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "minecraft",
+    "ai",
+    "agent",
+    "openclaw",
+    "mineflayer"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "mineflayer": "^4.14.0",
+    "mineflayer-navigate": "^0.0.10",
+    "mineflayer-pathfinder": "^2.4.0",
+    "mineflayer-tool": "^1.2.0"
+  },
+  "engines": {
+    "node": ">=16.13.0"
+  }
+}
