@@ -1,85 +1,122 @@
----
-name: minecraft-agent
-description: 让 AI 能够玩 Minecraft。通过截取游戏画面、使用视觉模型理解场景、LLM 决策动作，并控制鼠标键盘执行操作。当用户要求 AI 玩 Minecraft、要在 MC 中执行任务、获取游戏状态时使用此技能。
----
+# Voyager Minecraft Skill
 
-# Minecraft Agent Skill
+让 AI 能够像 Voyager 一样玩 Minecraft。
 
-本技能让 OpenClaw 能够作为 AI Agent 玩 Minecraft 游戏。
+## 架构
 
-## 核心功能
-
-- **游戏连接**: 通过 Mineflayer 连接本地 Minecraft 服务端
-- **视觉理解**: 截取游戏画面，分析场景、物品、敌怪
-- **动作执行**: 控制键盘鼠标执行移动、挖掘、放置、合成等操作
-- **状态反馈**: 获取物品栏、血量、饱食度、游戏状态
+```
+┌─────────────────────────────────────────────┐
+│         OpenClaw (我)                        │
+│  - 理解用户意图                              │
+│  - 下达任务                                  │
+│  - 监督/反思                                 │
+└──────────────────┬──────────────────────────┘
+                   │ 任务指令
+                   ▼
+┌─────────────────────────────────────────────┐
+│       Voyager Agent (本地运行)               │
+│  ┌─────────────────────────────────────────┐│
+│  │ Skill Library (终身学习)                ││
+│  │ - 存储学会的技能                         ││
+│  │ - 持续改进                               ││
+│  └─────────────────────────────────────────┘│
+│  ┌─────────────────────────────────────────┐│
+│  │ 循环: 观察 → 思考 → 执行 → 反思          ││
+│  └─────────────────────────────────────────┘│
+│  ┌─────────────────────────────────────────┐│
+│  │ Minecraft (Mineflayer)                  ││
+│  │ - 视觉输入                               ││
+│  │ - 动作执行                               ││
+│  └─────────────────────────────────────────┘│
+└─────────────────────────────────────────────┘
+```
 
 ## 使用方式
 
-### 1. 启动 Minecraft 服务
-
-用户需要先启动 Minecraft 并开放 LAN 服务器：
+### 1. 启动 Minecraft
 
 ```
-1. 启动 Minecraft (版本 1.19+)
-2. 创建或进入一个世界
-3. 设为创造模式 / 简单难度
-4. 按 ESC → 开放给 LAN
-5. 允许作弊: ON
-6. 记住端口号 (默认 25565)
+1. 启动 Minecraft 1.19+
+2. 创建世界，设为创造模式
+3. ESC → 开放给 LAN
+4. 记住端口 (默认 25565)
 ```
 
-### 2. 启动 Mineflayer Bot
+### 2. 启动 Bot
 
 ```bash
-cd minecraft-agent
+cd MineClaw
 npm install
-node scripts/start_bot.js --port 25565 --username OpenClawBot
+node scripts/start_bot.js --port 25565
 ```
 
-### 3. 通过对话控制
+### 3. 我来控制
 
-用户可以通过 QQ/Discord 告诉 AI 要做什么，例如：
-- "去挖点石头"
+你可以通过 QQ/Discord 给我下达任务，例如：
+
+- "去挖 10 块石头"
 - "造一个房子"
 - "杀掉附近的僵尸"
 
-## 可用动作
+我会：
+1. 理解任务
+2. 通过 HTTP API 控制 Bot
+3. 观察结果
+4. 反思改进
 
-- `move(direction)`: 移动 (forward/back/left/right)
-- `jump()`: 跳跃
-- `look(yaw, pitch)`: 视角
-- `attack()`: 攻击/挖掘
-- `useItem()`: 使用物品
-- `placeBlock(position, block)`: 放置方块
-- `craft(recipe, count)`: 合成
-- `getInventory()`: 获取物品栏
-- `getStatus()`: 获取状态 (血量、饱食度等)
-- `screenshot()`: 截取屏幕
+## 技能库
+
+Agent 会从任务中学习，自动保存成功的策略到 `skills/library.json`。
+
+每次执行任务：
+- 观察游戏状态
+- 决定动作
+- 执行并观察结果
+- 成功? 存入技能库
+- 失败? 反思改进
+
+## API
+
+Bot 提供 HTTP API:
+
+```
+GET  /status      - 获取状态 (血量、位置等)
+GET  /inventory   - 获取物品栏
+GET  /screenshot  - 截图
+POST /command?cmd=<action> - 执行动作
+```
+
+## 动作
+
+| 动作 | 参数 | 说明 |
+|------|------|------|
+| move | direction, duration | 移动 |
+| jump | - | 跳跃 |
+| attack | target | 挖掘/攻击 |
+| place | x, y, z, block | 放置方块 |
+| craft | recipe, count | 合成 |
+| use | slot | 使用物品 |
+| look | yaw, pitch | 视角 |
 
 ## 文件结构
 
 ```
-minecraft-agent/
-├── SKILL.md
+MineClaw/
+├── SKILL.md              # 本文件
 ├── README.md
+├── package.json
 ├── minecraft/
 │   ├── __init__.py
-│   ├── agent.py          # 主 Agent 类
-│   ├── mineflayer_client.py  # Mineflayer 通信
+│   ├── agent.py          # 基础 Agent
+│   ├── voyager.py        # Voyager 终身学习版 ⭐
+│   ├── mineflayer_client.py
 │   └── vision.py         # 视觉处理
 ├── prompts/
-│   ├── system.txt        # 系统提示词
-│   └── action.txt        # 动作提示词
+│   ├── system.txt        # 系统提示
+│   ├── action.txt        # 动作提示
+│   └── reflection.txt    # 反思提示
+├── skills/
+│   └── library.json      # 技能库 (自动生成)
 └── scripts/
-    ├── start_bot.js      # 启动 Bot 脚本
-    └── screenshot.js     # 截图脚本
+    └── start_bot.js      # Bot 启动
 ```
-
-## 依赖
-
-- Node.js ≥ 16.13.0
-- Minecraft 服务端 (本地)
-- Mineflayer
-- pynput (Python 鼠标键盘控制)
-- mss (屏幕截图)
