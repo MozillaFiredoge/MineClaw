@@ -1,7 +1,8 @@
 /**
  * Mineflayer Bot 启动脚本
+ * 支持从 config.yml 读取配置
  * 
- * 用法: node start_bot.js --port 25565 --username OpenClawBot
+ * 用法: node start_bot.js
  * 
  * 提供 HTTP API 用于外部控制:
  * - POST /command?cmd=<command>
@@ -15,29 +16,70 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-// 命令行参数解析
+// 加载 config.yml
+function loadConfig() {
+  const configPath = path.join(__dirname, '..', 'config.yml');
+  
+  if (!fs.existsSync(configPath)) {
+    console.log('[Config] config.yml not found, using defaults');
+    return getDefaultConfig();
+  }
+  
+  try {
+    const yaml = require('yaml');
+    const configFile = fs.readFileSync(configPath, 'utf8');
+    const config = yaml.parse(configFile);
+    console.log('[Config] Loaded config.yml');
+    return config;
+  } catch (e) {
+    console.error('[Config] Error loading config.yml:', e.message);
+    return getDefaultConfig();
+  }
+}
+
+function getDefaultConfig() {
+  return {
+    minecraft: {
+      host: 'java.applemc.fun',
+      port: 25565,
+      username: 'MineClawBot'
+    },
+    api: {
+      port: 3005
+    }
+  };
+}
+
+// 加载配置
+const config = loadConfig();
+const mcConfig = config.minecraft || {};
+const apiConfig = config.api || {};
+
+// 命令行参数会覆盖 config.yml
 const args = process.argv.slice(2);
-const config = {
-  host: 'localhost',
-  port: 25565,
-  username: 'OpenClawBot',
-  apiPort: 3000,
-  viewDistance: 2  // 减少视距以提高性能
+const botConfig = {
+  host: mcConfig.host || 'localhost',
+  port: mcConfig.port || 25565,
+  username: mcConfig.username || 'OpenClawBot',
+  apiPort: apiConfig.port || 3005,
+  viewDistance: mcConfig.viewDistance || 2
 };
 
 for (let i = 0; i < args.length; i++) {
-  if (args[i] === '--host' && args[i + 1]) config.host = args[++i];
-  if (args[i] === '--port' && args[i + 1]) config.port = parseInt(args[++i]);
-  if (args[i] === '--username' && args[i + 1]) config.username = args[++i];
-  if (args[i] === '--api-port' && args[i + 1]) config.apiPort = parseInt(args[++i]);
+  if (args[i] === '--host' && args[i + 1]) botConfig.host = args[++i];
+  if (args[i] === '--port' && args[i + 1]) botConfig.port = parseInt(args[++i]);
+  if (args[i] === '--username' && args[i + 1]) botConfig.username = args[++i];
+  if (args[i] === '--api-port' && args[i + 1]) botConfig.apiPort = parseInt(args[++i]);
 }
+
+console.log(`[Mineflayer] Connecting to ${botConfig.host}:${botConfig.port} as ${botConfig.username}`);
 
 // 创建 Bot
 const bot = mineflayer.createBot({
-  host: config.host,
-  port: config.port,
-  username: config.username,
-  viewDistance: config.viewDistance,
+  host: botConfig.host,
+  port: botConfig.port,
+  username: botConfig.username,
+  viewDistance: botConfig.viewDistance,
   chatLengthLimit: 1000000,
 });
 
@@ -53,12 +95,12 @@ const state = {
 
 // Bot 事件
 bot.on('login', () => {
-  console.log(`[Mineflayer] Logged in as ${config.username}`);
-  console.log(`[Mineflayer] Connected to ${config.host}:${config.port}`);
+  console.log(`[Mineflayer] ✅ Logged in as ${botConfig.username}`);
+  console.log(`[Mineflayer] ✅ Connected to ${botConfig.host}:${botConfig.port}`);
 });
 
 bot.on('death', () => {
-  console.log('[Mineflayer] Bot died! Respawning...');
+  console.log('[Mineflayer] 💀 Bot died! Respawning...');
   bot.respawn();
 });
 
@@ -76,11 +118,11 @@ bot.on('position', (pos) => {
 });
 
 bot.on('windowOpen', (window) => {
-  console.log('[Mineflayer] Window opened:', window.title);
+  console.log('[Mineflayer] 📦 Window opened:', window.title);
 });
 
 bot.on('windowClose', (window) => {
-  console.log('[Mineflayer] Window closed:', window.title);
+  console.log('[Mineflayer] 📦 Window closed:', window.title);
 });
 
 bot.on('chat', (username, message) => {
@@ -88,7 +130,7 @@ bot.on('chat', (username, message) => {
 });
 
 bot.on('error', (err) => {
-  console.error('[Mineflayer] Error:', err.message);
+  console.error('[Mineflayer] ❌ Error:', err.message);
 });
 
 // 更新物品栏
@@ -126,7 +168,7 @@ const actions = {
       
       const moveInterval = setInterval(() => {
         if (direction === 'forward') bot.setControlState('forward', true);
-        else if (direction === 'back') bot.setControlState('back', true);
+        else if (direction === 'backward') bot.setControlState('back', true);
         else if (direction === 'left') bot.setControlState('left', true);
         else if (direction === 'right') bot.setControlState('right', true);
         
@@ -162,11 +204,13 @@ const actions = {
   },
   
   // 放置方块
-  place: (x, y, z, block) => {
+  place: (block) => {
     try {
-      const pos = new bot.Vec3(x, y, z);
-      const blockType = bot.registry.blocks[block] || bot.registry.blocks['stone'];
-      bot.placeBlock(pos, new bot.Item(blockType, 1));
+      // 简单的放置 - 放在脚下
+      const pos = bot.entity.position;
+      const placePos = new mineflayer.Vec3(pos.x, pos.y - 1, pos.z);
+      const blockType = bot.registry.blocksByName[block] || bot.registry.blocksByName['stone'];
+      bot.placeBlock(placePos, new mineflayer.Item(blockType, 1));
       return { success: true };
     } catch (e) {
       return { success: false, error: e.message };
@@ -193,32 +237,44 @@ const actions = {
     return { success: false, error: 'Crafting not implemented' };
   },
   
+  // 挖掘
+  mine: (blockName) => {
+    // 简化版
+    return { success: false, error: 'Mining not fully implemented' };
+  },
+  
   // 调整视角
   look: (yaw, pitch) => {
-    bot.look(yaw * (Math.PI / 180), pitch * (Math.PI / 180));
-    return { success: true };
+    try {
+      const yawRad = (yaw || 0) * (Math.PI / 180);
+      const pitchRad = (pitch || 0) * (Math.PI / 180);
+      bot.look(yawRad, pitchRad);
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
   },
   
   // 发送聊天
-  chat: (message) => {
+  say: (message) => {
     bot.chat(message);
     return { success: true };
   },
   
   // 状态
-  status: () => {
+  get_status: () => {
     return {
       health: state.health,
       food: state.food,
       position: state.position,
       inventory: state.inventory,
-      dimension: bot.game.dimension,
-      gameMode: bot.game.gameMode
+      dimension: bot.game?.dimension || 'unknown',
+      gameMode: bot.game?.gameMode || 'unknown'
     };
   },
   
   // 物品栏
-  inventory: () => {
+  get_inventory: () => {
     return { items: state.inventory };
   },
   
@@ -233,7 +289,7 @@ const actions = {
     const filepath = path.join(screenshotDir, filename);
     
     // 尝试使用外部截图工具
-    const screenshotTools = ['gnome-screenshot', 'scrot', 'import', 'screencapture'];
+    const screenshotTools = ['gnome-screenshot', 'scrot', 'import', 'screencapture', 'maim'];
     
     for (const tool of screenshotTools) {
       try {
@@ -241,7 +297,7 @@ const actions = {
         execSync(`${tool} "${filepath}"`, { timeout: 5000 });
         if (fs.existsSync(filepath)) {
           state.lastScreenshot = filepath;
-          console.log(`[Mineflayer] Screenshot saved: ${filepath}`);
+          console.log(`[Mineflayer] 📷 Screenshot saved: ${filepath}`);
           return { path: filepath, tool };
         }
       } catch (e) {
@@ -251,20 +307,58 @@ const actions = {
     }
     
     return { error: 'No screenshot tool available. Install gnome-screenshot, scrot, or ImageMagick.' };
+  },
+  
+  // 停止移动
+  stop: () => {
+    bot.setControlState('forward', false);
+    bot.setControlState('back', false);
+    bot.setControlState('left', false);
+    bot.setControlState('right', false);
+    bot.setControlState('jump', false);
+    return { success: true };
   }
 };
 
 // HTTP API 服务器
 const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   res.setHeader('Content-Type', 'application/json');
   
+  // 处理 OPTIONS 预检请求
+  if (req.method === 'OPTIONS') {
+    res.statusCode = 200;
+    res.end();
+    return;
+  }
+  
   try {
-    const url = new URL(req.url, `http://localhost:${config.apiPort}`);
+    const url = new URL(req.url, `http://localhost:${botConfig.apiPort}`);
+    const pathname = url.pathname;
+    const method = req.method;
+    
+    console.log(`[API] ${method} ${pathname}`);
     
     // POST /command
-    if (req.method === 'POST' && url.pathname === '/command') {
-      const cmd = url.searchParams.get('cmd');
+    if (method === 'POST' && pathname === '/command') {
+      let body = '';
+      for await (const chunk of req) {
+        body += chunk;
+      }
+      
+      let cmd = url.searchParams.get('cmd');
+      
+      // 如果 body 有 JSON 数据，优先使用
+      if (body) {
+        try {
+          const data = JSON.parse(body);
+          if (data.cmd) cmd = data.cmd;
+        } catch (e) {
+          // 忽略
+        }
+      }
       
       if (!cmd) {
         res.statusCode = 400;
@@ -272,7 +366,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       
-      console.log(`[API] Executing: ${cmd}`);
+      console.log(`[API] 🔧 Executing: ${cmd}`);
       const [action, ...args] = cmd.split(' ');
       
       if (actions[action]) {
@@ -286,37 +380,94 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     
+    // POST /control/state (移动控制)
+    if (method === 'POST' && pathname === '/control/state') {
+      let body = '';
+      for await (const chunk of req) {
+        body += chunk;
+      }
+      
+      const data = JSON.parse(body || '{}');
+      
+      if (data.forward) bot.setControlState('forward', true);
+      else bot.setControlState('forward', false);
+      
+      if (data.backward) bot.setControlState('back', true);
+      else bot.setControlState('back', false);
+      
+      if (data.left) bot.setControlState('left', true);
+      else bot.setControlState('left', false);
+      
+      if (data.right) bot.setControlState('right', true);
+      else bot.setControlState('right', false);
+      
+      if (data.jump) bot.setControlState('jump', true);
+      else bot.setControlState('jump', false);
+      
+      res.end(JSON.stringify({ success: true }));
+      return;
+    }
+    
+    // POST /control/attack
+    if (method === 'POST' && pathname === '/control/attack') {
+      bot.attack();
+      res.end(JSON.stringify({ success: true }));
+      return;
+    }
+    
     // GET /status
-    if (req.method === 'GET' && url.pathname === '/status') {
-      res.end(JSON.stringify(actions.status()));
+    if (method === 'GET' && pathname === '/status') {
+      res.end(JSON.stringify(actions.get_status()));
       return;
     }
     
     // GET /inventory
-    if (req.method === 'GET' && url.pathname === '/inventory') {
-      res.end(JSON.stringify(actions.inventory()));
+    if (method === 'GET' && pathname === '/inventory') {
+      res.end(JSON.stringify(actions.get_inventory()));
       return;
     }
     
     // GET /screenshot
-    if (req.method === 'GET' && url.pathname === '/screenshot') {
-      const result = actions.screenshot();
+    if (method === 'GET' && pathname === '/screenshot') {
+      const result = await actions.screenshot();
       res.end(JSON.stringify(result));
+      return;
+    }
+    
+    // GET /render (POV)
+    if (method === 'GET' && pathname === '/render') {
+      res.end(JSON.stringify({ 
+        note: 'Use external screenshot tool',
+        endpoint: '/screenshot'
+      }));
       return;
     }
     
     // 404
     res.statusCode = 404;
-    res.end(JSON.stringify({ error: 'Not found' }));
+    res.end(JSON.stringify({ error: 'Not found', available_endpoints: [
+      'POST /command',
+      'POST /control/state',
+      'POST /control/attack',
+      'GET /status',
+      'GET /inventory',
+      'GET /screenshot'
+    ]}));
     
   } catch (e) {
     res.statusCode = 500;
+    console.error('[API] ❌ Error:', e.message);
     res.end(JSON.stringify({ error: e.message }));
   }
 });
 
-server.listen(config.apiPort, () => {
-  console.log(`[HTTP API] Server running on http://localhost:${config.apiPort}`);
+server.listen(botConfig.apiPort, () => {
+  console.log(`[HTTP API] 🌐 Server running on http://localhost:${botConfig.apiPort}`);
+  console.log(`[HTTP API] Available endpoints:`);
+  console.log(`  - POST /command?cmd=<action> [args...]`);
+  console.log(`  - GET  /status`);
+  console.log(`  - GET  /inventory`);
+  console.log(`  - GET  /screenshot`);
 });
 
-console.log('[Mineflayer] Starting bot...');
+console.log('[Mineflayer] 🚀 Starting bot...');

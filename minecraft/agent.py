@@ -51,8 +51,7 @@ class MinecraftAgent:
         
         # 初始化客户端
         self.client = MineflayerClient(
-            host='localhost',
-            port=self.http_port
+            api_url=f"http://localhost:{self.http_port}"
         )
         
         # 初始化技能库

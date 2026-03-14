@@ -4,7 +4,7 @@ OpenClaw Minecraft Agent
 """
 
 from .agent import MinecraftAgent, create_agent
-from .mineflayer_client import MineflayerClient, MCAPIClient
+from .mineflayer_client import MineflayerClient
 
 __version__ = "0.1.0"
-__all__ = ["MinecraftAgent", "create_agent", "MineflayerClient", "MCAPIClient"]
+__all__ = ["MinecraftAgent", "create_agent", "MineflayerClient"]
