@@ -43,7 +43,9 @@ class MinecraftAgent:
         self.host = mc_config.get('host', 'java.applemc.fun')
         self.port = mc_config.get('port', 25565)
         self.username = mc_config.get('username', 'MineClaw')
-        self.http_port = mc_config.get('http_port', 3005)
+        # HTTP API 端口
+        api_config = self.config.get('api', {})
+        self.http_port = api_config.get('port', 3005)
         
         # Voyager 配置
         voyager_config = self.config.get('voyager', {})
