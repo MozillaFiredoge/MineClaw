@@ -215,48 +215,66 @@ class MinecraftAgent:
     
     def run_task(self, task: str, max_steps: int = 100) -> dict:
         """
-        运行任务的主循环
+        运行任务的主循环 (同步版本)
         """
+        import requests
+        
         print(f"🎮 开始任务: {task}")
         
         for step in range(max_steps):
             print(f"\n--- 步骤 {step + 1}/{max_steps} ---")
             
-            # 1. 获取截图
-            screenshot_data = self.client.screenshot()
+            # 1. 获取截图 (暂时跳过)
+            screenshot_data = None
+            # try:
+            #     import asyncio
+            #     screenshot_data = asyncio.run(self.client.screenshot())
+            # except:
+            #     pass
             
-            # 2. 获取状态
-            status = self.client.get_status()
-            inventory = self.client.get_inventory()
+            # 2. 获取状态 (同步方式)
+            try:
+                status = requests.get(f"{self.api_url}/status", timeout=5).json()
+                inventory = requests.get(f"{self.api_url}/inventory", timeout=5).json()
+            except Exception as e:
+                print(f"⚠️ 获取状态失败: {e}")
+                status = {"error": str(e)}
+                inventory = {"items": []}
             
             context = {
                 "status": status,
                 "inventory": inventory
             }
+            print(f"📊 状态: {status}")
             
             # 3. LLM 决策
             decision = self.think(task, screenshot_data, context)
             print(f"🤔 决策: {decision}")
             
             # 4. 解析并执行动作
-            # 尝试解析 LLM 返回的 JSON
             action = None
             try:
-                # 尝试提取 JSON
                 import re
-                json_match = re.search(r'\{[^{}]*"action"[^{}]*\}', decision, re.DOTALL)
+                # 尝试提取 JSON 块 (支持多行)
+                json_match = re.search(r'```json\s*(\{.*?\})\s*```', decision, re.DOTALL)
+                if not json_match:
+                    # 尝试直接找 JSON
+                    json_match = re.search(r'(\{.*?\})', decision, re.DOTALL)
+                
                 if json_match:
-                    action_data = json.loads(json_match.group())
+                    json_str = json_match.group(1)
+                    action_data = json.loads(json_str)
                     action = action_data.get('action', '')
                     params = action_data.get('params', {})
-                    # 组合动作和参数
                     if params:
                         action = f"{action} {params.get('direction', params.get('block', ''))}"
                 else:
-                    # 如果不是 JSON，尝试直接用第一行作为动作
-                    action = decision.strip().split('\n')[0].strip()
-            except:
-                # 如果解析失败，直接执行原始决策
+                    # 提取第一行纯文本
+                    lines = [l.strip() for l in decision.split('\n') if l.strip() and not l.strip().startswith('```')]
+                    action = lines[0] if lines else ""
+            except Exception as e:
+                print(f"⚠️ 解析失败: {e}")
+                action = decision.strip().split('\n')[0].strip()
                 action = decision.strip().split('\n')[0].strip()
             
             # 执行动作
@@ -265,10 +283,10 @@ class MinecraftAgent:
                 result = self.execute(action)
                 print(f"📋 结果: {result}")
             
-            # 5. 检查是否完成 (这里简单处理，可以根据任务类型进一步优化)
-            # 可以添加完成任务的条件判断
+            # 简单判断：只执行一次
+            break
             
-        return {"success": True, "steps": max_steps}
+        return {"success": True, "steps": step + 1}
 
 
 def create_agent(config_path: str = None) -> MinecraftAgent:
