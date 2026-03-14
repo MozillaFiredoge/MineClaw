@@ -239,11 +239,34 @@ class MinecraftAgent:
             print(f"🤔 决策: {decision}")
             
             # 4. 解析并执行动作
-            # 这里可以解析 LLM 返回的动作并执行
-            # 简化版本：假设 LLM 返回的是动作名称
+            # 尝试解析 LLM 返回的 JSON
+            action = None
+            try:
+                # 尝试提取 JSON
+                import re
+                json_match = re.search(r'\{[^{}]*"action"[^{}]*\}', decision, re.DOTALL)
+                if json_match:
+                    action_data = json.loads(json_match.group())
+                    action = action_data.get('action', '')
+                    params = action_data.get('params', {})
+                    # 组合动作和参数
+                    if params:
+                        action = f"{action} {params.get('direction', params.get('block', ''))}"
+                else:
+                    # 如果不是 JSON，尝试直接用第一行作为动作
+                    action = decision.strip().split('\n')[0].strip()
+            except:
+                # 如果解析失败，直接执行原始决策
+                action = decision.strip().split('\n')[0].strip()
             
-            # 5. 检查是否完成
-            # 可以根据状态判断任务是否完成
+            # 执行动作
+            if action:
+                print(f"⚡ 执行: {action}")
+                result = self.execute(action)
+                print(f"📋 结果: {result}")
+            
+            # 5. 检查是否完成 (这里简单处理，可以根据任务类型进一步优化)
+            # 可以添加完成任务的条件判断
             
         return {"success": True, "steps": max_steps}
 

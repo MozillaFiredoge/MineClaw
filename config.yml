@@ -13,7 +13,6 @@ minecraft:
   view_distance: 2
 
 api:
-  # HTTP API 地址 (本机用 localhost，其他机器用 IP)
   host: "localhost"
   port: 3005
 
