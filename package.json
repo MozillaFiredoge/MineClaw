@@ -21,6 +21,7 @@
     "mineflayer-navigate": "^0.0.10",
     "mineflayer-pathfinder": "^2.4.0",
     "mineflayer-tool": "^1.2.0",
+    "prismarine-viewer": "^1.33.0",
     "yaml": "^2.8.2"
   },
   "engines": {

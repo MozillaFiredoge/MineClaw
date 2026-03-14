@@ -8,13 +8,23 @@
  * - POST /command?cmd=<command>
  * - GET /status
  * - GET /inventory
- * - GET /screenshot
+ * - GET /screenshot (使用 prismarine-viewer)
+ * - GET /view (获取第一人称视角)
  */
 
 const mineflayer = require('mineflayer');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+
+// 尝试加载 prismarine-viewer
+let mineflayerViewer = null;
+try {
+  mineflayerViewer = require('prismarine-viewer').mineflayer;
+  console.log('[Viewer] prismarine-viewer 已加载');
+} catch (e) {
+  console.log('[Viewer] prismarine-viewer 未安装，将使用外部截图工具');
+}
 
 // 加载 config.yml
 function loadConfig() {
@@ -98,6 +108,18 @@ bot.on('login', () => {
   console.log(`[Mineflayer] ✅ Logged in as ${botConfig.username}`);
   console.log(`[Mineflayer] ✅ Connected to ${botConfig.host}:${botConfig.port}`);
 });
+
+// 启动 prismarine-viewer
+if (mineflayerViewer) {
+  bot.on('spawn', () => {
+    try {
+      mineflayerViewer(bot, { port: 3007, firstPerson: true });
+      console.log('[Viewer] 🌐 第一人称视角已启动: http://localhost:3007');
+    } catch (e) {
+      console.log('[Viewer] ❌ 启动失败:', e.message);
+    }
+  });
+}
 
 bot.on('death', () => {
   console.log('[Mineflayer] 💀 Bot died! Respawning...');
@@ -306,8 +328,17 @@ const actions = {
     return { items: state.inventory };
   },
   
-  // 截图 - 使用外部截图工具
+  // 截图 - 使用 prismarine-viewer
   screenshot: async () => {
+    if (mineflayerViewer) {
+      // 返回 viewer URL
+      return { 
+        viewer: 'http://localhost:3007',
+        note: '使用第一人称视角查看器'
+      };
+    }
+    
+    // 后备：使用外部截图工具
     const screenshotDir = path.join(__dirname, '..', 'screenshots');
     if (!fs.existsSync(screenshotDir)) {
       fs.mkdirSync(screenshotDir, { recursive: true });
@@ -316,7 +347,6 @@ const actions = {
     const filename = `screenshot_${Date.now()}.png`;
     const filepath = path.join(screenshotDir, filename);
     
-    // 尝试使用外部截图工具
     const screenshotTools = ['gnome-screenshot', 'scrot', 'import', 'screencapture', 'maim'];
     
     for (const tool of screenshotTools) {
@@ -329,7 +359,6 @@ const actions = {
           return { path: filepath, tool };
         }
       } catch (e) {
-        // 尝试下一个工具
         continue;
       }
     }
