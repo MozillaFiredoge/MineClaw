@@ -1,85 +1,173 @@
+# MineClaw SKILL.md
+
+> Minecraft AI Agent 技能接口 - 让 AI 自主玩 Minecraft
+
+## 快速开始
+
+```bash
+# 1. 安装依赖
+cd minecraft-agent
+npm install
+yarn install
+
+# 2. 配置 config.yml（必须）
+# - 填写你的 OpenAI API Key
+# - 设置 Minecraft 服务器信息
+
+# 3. 启动 Mineflayer Bot
+node scripts/start_bot.js --host java.applemc.fun --port 25565 --username YourBotName
+
+# 4. 使用 Agent（Python）
+python -c "
+from minecraft.agent import create_agent
+agent = create_agent()
+agent.run_task('去挖10块石头')
+"
+```
+
 ---
-name: minecraft-agent
-description: 让 AI 能够玩 Minecraft。通过截取游戏画面、使用视觉模型理解场景、LLM 决策动作，并控制鼠标键盘执行操作。当用户要求 AI 玩 Minecraft、要在 MC 中执行任务、获取游戏状态时使用此技能。
+
+## 配置文件 config.yml
+
+```yaml
+# LLM 配置（必须）
+llm:
+  model: gpt-4o-mini              # 模型
+  endpoint: https://api.openai.com/v1  # API 端点
+  api_key: ${OPENAI_API_KEY}      # API 密钥（支持环境变量）
+  vision_base64: true             # 图片是否用 base64 编码
+
+# Minecraft 服务器
+minecraft:
+  host: java.applemc.fun
+  port: 25565
+  username: MineClaw
+  http_port: 3005                 # Mineflayer HTTP API 端口
+
+# Voyager 技能库（可选）
+voyager:
+  skill_library_path: ./data/skills.json
+  auto_save: true
+```
+
 ---
-
-# Minecraft Agent Skill
-
-本技能让 OpenClaw 能够作为 AI Agent 玩 Minecraft 游戏。
-
-## 核心功能
-
-- **游戏连接**: 通过 Mineflayer 连接本地 Minecraft 服务端
-- **视觉理解**: 截取游戏画面，分析场景、物品、敌怪
-- **动作执行**: 控制键盘鼠标执行移动、挖掘、放置、合成等操作
-- **状态反馈**: 获取物品栏、血量、饱食度、游戏状态
 
 ## 使用方式
 
-### 1. 启动 Minecraft 服务
+### 方式一：Python API
 
-用户需要先启动 Minecraft 并开放 LAN 服务器：
+```python
+from minecraft.agent import create_agent
 
+# 创建 Agent
+agent = create_agent('config.yml')
+
+# 执行任务
+agent.run_task('去森林找一棵树然后砍掉')
 ```
-1. 启动 Minecraft (版本 1.19+)
-2. 创建或进入一个世界
-3. 设为创造模式 / 简单难度
-4. 按 ESC → 开放给 LAN
-5. 允许作弊: ON
-6. 记住端口号 (默认 25565)
-```
 
-### 2. 启动 Mineflayer Bot
+### 方式二：HTTP API（推荐）
+
+启动 Bot 后，用 curl 控制：
 
 ```bash
-cd minecraft-agent
-npm install
-node scripts/start_bot.js --port 25565 --username OpenClawBot
+# 获取状态
+curl http://localhost:3005/status
+
+# 获取截图
+curl http://localhost:3005/screenshot -o screenshot.png
+
+# 移动
+curl -X POST http://localhost:3005/command?cmd=move%20forward
+
+# 放置方块
+curl -X POST http://localhost:3005/blocks/place -H "Content-Type: application/json" -d '{"name": "dirt"}'
+
+# 挖掘
+curl -X POST http://localhost:3005/mine -H "Content-Type: application/json" -d '{"block": "stone"}'
+
+# 合成
+curl -X POST http://localhost:3005/craft -H "Content-Type: application/json" -d '{"item": "stick", "count": 4}'
+
+# 攻击
+curl -X POST http://localhost:3005/control/attack
+
+# 聊天
+curl -X POST "http://localhost:3005/command?cmd=say%20Hello%20World"
 ```
 
-### 3. 通过对话控制
-
-用户可以通过 QQ/Discord 告诉 AI 要做什么，例如：
-- "去挖点石头"
-- "造一个房子"
-- "杀掉附近的僵尸"
+---
 
 ## 可用动作
 
-- `move(direction)`: 移动 (forward/back/left/right)
-- `jump()`: 跳跃
-- `look(yaw, pitch)`: 视角
-- `attack()`: 攻击/挖掘
-- `useItem()`: 使用物品
-- `placeBlock(position, block)`: 放置方块
-- `craft(recipe, count)`: 合成
-- `getInventory()`: 获取物品栏
-- `getStatus()`: 获取状态 (血量、饱食度等)
-- `screenshot()`: 截取屏幕
+| 动作 | 说明 | 示例 |
+|------|------|------|
+| `move <方向>` | 移动 | `move forward`, `move left` |
+| `jump` | 跳跃 | `jump` |
+| `attack` | 攻击/挖掘 | `attack` |
+| `place_block <方块>` | 放置方块 | `place_block dirt` |
+| `use_item` | 使用主手物品 | `use_item` |
+| `craft <物品>` | 合成 | `craft table` |
+| `mine <方块>` | 挖掘指定方块 | `mine stone` |
+| `look <yaw> <pitch>` | 视角旋转 | `look 90 0` |
+| `screenshot` | 获取截图 | `screenshot` |
+| `get_status` | 获取状态 | `get_status` |
+| `get_inventory` | 获取物品栏 | `get_inventory` |
 
-## 文件结构
+---
+
+## 端点列表
+
+### 状态获取
+- `GET /status` - 生命值、饱食度、坐标
+- `GET /inventory` - 物品栏
+- `GET /screenshot` - 游戏截图
+- `GET /entities` - 附近的实体
+- `GET /chunks` - 加载的区块
+
+### 动作执行
+- `POST /command?cmd=<命令>` - 执行命令
+- `POST /control/state` - 控制移动/跳跃
+- `POST /control/attack` - 攻击
+- `POST /blocks/place` - 放置方块
+- `POST /mine` - 挖掘
+- `POST /craft` - 合成
+- `POST /items/use` - 使用物品
+- `POST /pathfinder/go` - 导航
+
+---
+
+## 常见问题
+
+### Q: 连接不上服务器？
+- 检查服务器地址和端口是否正确
+- 确认服务器允许外链 bot 登录
+
+### Q: API 调用返回错误？
+- 确认 Mineflayer HTTP API 已启动（默认 localhost:3005）
+- 查看 Bot 控制台日志
+
+### Q: LLM 调用失败？
+- 检查 config.yml 中的 api_key 是否正确
+- 确认 endpoint 可访问
+
+---
+
+## 架构图
 
 ```
-minecraft-agent/
-├── SKILL.md
-├── README.md
-├── minecraft/
-│   ├── __init__.py
-│   ├── agent.py          # 主 Agent 类
-│   ├── mineflayer_client.py  # Mineflayer 通信
-│   └── vision.py         # 视觉处理
-├── prompts/
-│   ├── system.txt        # 系统提示词
-│   └── action.txt        # 动作提示词
-└── scripts/
-    ├── start_bot.js      # 启动 Bot 脚本
-    └── screenshot.js     # 截图脚本
+┌─────────────┐     ┌──────────────────┐     ┌────────────────┐
+│   用户       │────▶│   MinecraftAgent │────▶│ Mineflayer Bot │
+│ (发任务)    │     │   (LLM 决策)     │     │  (游戏执行)    │
+└─────────────┘     └──────────────────┘     └────────────────┘
+                           │
+                           ▼
+                    ┌──────────────────┐
+                    │    SkillLibrary  │
+                    │   ( Voyager 技能) │
+                    └──────────────────┘
 ```
 
-## 依赖
+---
 
-- Node.js ≥ 16.13.0
-- Minecraft 服务端 (本地)
-- Mineflayer
-- pynput (Python 鼠标键盘控制)
-- mss (屏幕截图)
+**需要帮助？** 随时问我！🎮

@@ -1,0 +1,37 @@
+# MineClaw 配置文件
+# 使用 OpenAI 兼容接口连接 LLM
+
+llm:
+  # 模型名称
+  model: "custom-api-edgefn-net/MiniMax-M2.5"
+  # API 端点
+  endpoint: "https://api.custom-api.edgefn.net/v1/chat/completions"
+  # API Key
+  api_key: "your-api-key-here"
+  # 最大 token 数
+  max_tokens: 2048
+  # 温度
+  temperature: 0.7
+
+minecraft:
+  # Minecraft 服务器地址
+  host: "localhost"
+  # Minecraft 服务器端口
+  port: 25565
+  # 机器人用户名
+  username: "OpenClawBot"
+
+# Bot HTTP API 地址 (Mineflayer)
+bot:
+  api_url: "http://localhost:3000"
+
+# Agent 设置
+agent:
+  # 最大执行步数
+  max_steps: 100
+  # 动作间隔(秒)
+  action_interval: 0.5
+  # 截图保存目录
+  screenshot_dir: "./screenshots"
+  # 技能库目录
+  skills_path: "./skills"
