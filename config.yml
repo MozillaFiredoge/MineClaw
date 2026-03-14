@@ -17,7 +17,7 @@ api:
   port: 3005
 
 voyager:
-  skill_library_path: ./data/skills.json
+  skill_library_path: ./data
   auto_save: true
 
 logging:

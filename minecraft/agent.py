@@ -216,23 +216,40 @@ class MinecraftAgent:
     def run_task(self, task: str, max_steps: int = 100) -> dict:
         """
         运行任务的主循环 (同步版本)
+        支持终身学习：完成任务后存入技能库，下次直接调用
         """
         import requests
         
         print(f"🎮 开始任务: {task}")
         
+        # ========== 检查技能库 ==========
+        # 先检查是否已经学习过这个任务
+        existing_skill = self.skill_library.get(task)
+        if existing_skill and existing_skill.code:
+            print(f"📚 发现已学习技能: {task}")
+            print(f"📋 执行已保存的动作序列: {existing_skill.code}")
+            # 直接执行保存的动作序列
+            actions = existing_skill.code.split(' → ')
+            for action in actions:
+                action = action.strip()
+                if action:
+                    print(f"⚡ 执行: {action}")
+                    result = self.execute(action)
+                    print(f"📋 结果: {result}")
+            return {
+                "success": True, 
+                "steps": len(actions), 
+                "reason": f"使用已学习的技能，共 {len(actions)} 步",
+                "from_skill_library": True
+            }
+        
+        # ========== 没有技能，重新学习 ==========
+        action_history = []  # 记录执行过的动作
+        
         for step in range(max_steps):
             print(f"\n--- 步骤 {step + 1}/{max_steps} ---")
             
-            # 1. 获取截图 (暂时跳过)
-            screenshot_data = None
-            # try:
-            #     import asyncio
-            #     screenshot_data = asyncio.run(self.client.screenshot())
-            # except:
-            #     pass
-            
-            # 2. 获取状态 (同步方式)
+            # 1. 获取状态 (不需要截图)
             try:
                 status = requests.get(f"{self.api_url}/status", timeout=5).json()
                 inventory = requests.get(f"{self.api_url}/inventory", timeout=5).json()
@@ -247,18 +264,16 @@ class MinecraftAgent:
             }
             print(f"📊 状态: {status}")
             
-            # 3. LLM 决策
-            decision = self.think(task, screenshot_data, context)
+            # 2. LLM 决策
+            decision = self.think(task, None, context)
             print(f"🤔 决策: {decision}")
             
-            # 4. 解析并执行动作
+            # 3. 解析并执行动作
             action = None
             try:
                 import re
-                # 尝试提取 JSON 块 (支持多行)
                 json_match = re.search(r'```json\s*(\{.*?\})\s*```', decision, re.DOTALL)
                 if not json_match:
-                    # 尝试直接找 JSON
                     json_match = re.search(r'(\{.*?\})', decision, re.DOTALL)
                 
                 if json_match:
@@ -269,22 +284,20 @@ class MinecraftAgent:
                     if params:
                         action = f"{action} {params.get('direction', params.get('block', ''))}"
                 else:
-                    # 提取第一行纯文本
                     lines = [l.strip() for l in decision.split('\n') if l.strip() and not l.strip().startswith('```')]
                     action = lines[0] if lines else ""
             except Exception as e:
                 print(f"⚠️ 解析失败: {e}")
                 action = decision.strip().split('\n')[0].strip()
-                action = decision.strip().split('\n')[0].strip()
             
-            # 执行动作
+            # 执行动作并记录
             if action:
                 print(f"⚡ 执行: {action}")
                 result = self.execute(action)
                 print(f"📋 结果: {result}")
+                action_history.append(action)
                 
-                # 检查是否完成任务
-                # 让 LLM 判断是否需要继续
+                # 4. 检查是否完成任务
                 check_context = {
                     "status": status,
                     "inventory": inventory,
@@ -293,7 +306,6 @@ class MinecraftAgent:
                     "original_task": task
                 }
                 
-                # 让 LLM 判断任务是否完成
                 check_prompt = f"""
 任务: {task}
 刚才执行的动作: {action}
@@ -325,8 +337,31 @@ class MinecraftAgent:
                     if check_match:
                         check_data = json.loads(check_match.group(1))
                         if check_data.get('completed', False):
-                            print(f"✅ 任务完成: {check_data.get('reason', '')}")
-                            return {"success": True, "steps": step + 1, "reason": check_data.get('reason', '')}
+                            reason = check_data.get('reason', '')
+                            print(f"✅ 任务完成: {reason}")
+                            
+                            # ========== 存入技能库 ==========
+                            if action_history:
+                                skill_code = " → ".join(action_history)
+                                print(f"📚 存入技能库: {task}")
+                                print(f"   动作序列: {skill_code}")
+                                
+                                from .voyager import Skill
+                                skill = Skill(
+                                    name=task,
+                                    description=f"完成任务的技能: {task}",
+                                    code=skill_code,
+                                    success_rate=1.0
+                                )
+                                self.skill_library.add(skill)
+                            
+                            return {
+                                "success": True, 
+                                "steps": step + 1, 
+                                "reason": reason,
+                                "skill_saved": True,
+                                "action_sequence": action_history
+                            }
                 except:
                     pass
             
@@ -335,7 +370,7 @@ class MinecraftAgent:
                 print(f"⚠️ 达到最大步数 {max_steps}，停止")
                 break
             
-        return {"success": True, "steps": step + 1}
+        return {"success": True, "steps": step + 1, "action_sequence": action_history}
 
 
 def create_agent(config_path: str = None) -> MinecraftAgent:
