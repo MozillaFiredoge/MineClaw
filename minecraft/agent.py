@@ -164,50 +164,52 @@ class MinecraftAgent:
         response = self._call_llm(messages)
         return response
     
-    def execute(self, action: str, **kwargs) -> dict:
-        """执行动作"""
-        action = action.lower().strip()
+    def execute(self, action_str: str, **kwargs) -> dict:
+        """执行动作 - 使用同步 HTTP 请求"""
+        import requests
         
-        # 解析动作
+        action = action_str.lower().strip()
         parts = action.split()
         action_name = parts[0] if parts else ""
         action_params = " ".join(parts[1:]) if len(parts) > 1 else ""
         
-        # 执行对应动作
-        if action_name == "move":
-            direction = action_params or "forward"
-            return self.client.move(direction)
+        base_url = f"http://localhost:{self.http_port}"
         
-        elif action_name == "jump":
-            return self.client.jump()
-        
-        elif action_name == "attack":
-            return self.client.attack()
-        
-        elif action_name == "place_block":
-            block = action_params or "dirt"
-            return self.client.place_block(block)
-        
-        elif action_name == "use_item":
-            return self.client.use_item()
-        
-        elif action_name == "look":
-            return self.client.look(action_params)
-        
-        elif action_name == "craft":
-            item = action_params
-            return self.client.craft(item)
-        
-        elif action_name == "mine":
-            block = action_params or "stone"
-            return self.client.mine(block)
-        
-        elif action_name == "say":
-            message = action_params
-            return self.client.say(message)
-        
-        else:
-            return {"success": False, "error": f"未知动作: {action_name}"}
+        try:
+            if action_name == "move":
+                r = requests.post(f"{base_url}/command", params={"cmd": f"move {action_params or 'forward'}"}, timeout=5)
+                return r.json()
+            elif action_name == "jump":
+                r = requests.post(f"{base_url}/command", params={"cmd": "jump"}, timeout=5)
+                return r.json()
+            elif action_name == "attack":
+                r = requests.post(f"{base_url}/control/attack", timeout=5)
+                return r.json()
+            elif action_name == "place_block":
+                r = requests.post(f"{base_url}/command", params={"cmd": f"place {action_params or 'dirt'}"}, timeout=5)
+                return r.json()
+            elif action_name == "use_item":
+                r = requests.post(f"{base_url}/command", params={"cmd": "use"}, timeout=5)
+                return r.json()
+            elif action_name == "look":
+                r = requests.post(f"{base_url}/command", params={"cmd": f"look {action_params}"}, timeout=5)
+                return r.json()
+            elif action_name == "craft":
+                r = requests.post(f"{base_url}/command", params={"cmd": f"craft {action_params}"}, timeout=5)
+                return r.json()
+            elif action_name == "mine":
+                r = requests.post(f"{base_url}/command", params={"cmd": f"mine {action_params or 'stone'}"}, timeout=5)
+                return r.json()
+            elif action_name == "say":
+                r = requests.post(f"{base_url}/command", params={"cmd": f"say {action_params}"}, timeout=5)
+                return r.json()
+            elif action_name == "stop":
+                r = requests.post(f"{base_url}/command", params={"cmd": "stop"}, timeout=5)
+                return r.json()
+            else:
+                return {"success": False, "error": f"未知动作: {action_name}"}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
     
     def run_task(self, task: str, max_steps: int = 100) -> dict:
         """

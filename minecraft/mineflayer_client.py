@@ -14,7 +14,7 @@ from datetime import datetime
 class MineflayerClient:
     """Mineflayer Bot HTTP API 客户端"""
     
-    def __init__(self, api_url: str = "http://localhost:3000", screenshot_dir: str = "./screenshots"):
+    def __init__(self, api_url: str = "http://localhost:3005", screenshot_dir: str = "./screenshots"):
         self.api_url = api_url.rstrip("/")
         self.screenshot_dir = Path(screenshot_dir)
         self.screenshot_dir.mkdir(parents=True, exist_ok=True)
@@ -50,298 +50,113 @@ class MineflayerClient:
         except Exception as e:
             return {"error": f"Unexpected error: {e}", "success": False}
     
+    async def _call_command(self, cmd: str) -> Dict:
+        """通过 /command 端点执行动作"""
+        return await self._call_api(f"command?cmd={cmd}", method="POST")
+    
     # ==================== 核心功能 ====================
     
     async def get_status(self) -> Dict[str, Any]:
-        """
-        获取 Bot 状态
-        TODO: 完成状态获取
-        """
+        """获取 Bot 状态"""
         result = await self._call_api("status")
-        # 增强状态信息
-        if "success" not in result:
-            result["success"] = "error" not in result
+        if "error" not in result:
+            result["success"] = True
         return result
     
     async def get_inventory(self) -> Dict[str, Any]:
-        """
-        获取物品栏
-        """
+        """获取物品栏"""
         result = await self._call_api("inventory")
-        # 规范化物品数据
-        if result.get("success"):
-            items = result.get("items", [])
-            result["items"] = [
-                {
-                    "slot": item.get("slot"),
-                    "name": item.get("name", ""),
-                    "count": item.get("count", 1),
-                    "metadata": item.get("metadata", 0),
-                    "displayName": item.get("displayName", item.get("name", ""))
-                }
-                for item in items
-            ]
         return result
     
-    async def get_position(self) -> Dict[str, Any]:
-        """
-        获取 Bot 位置
-        """
-        result = await self._call_api("position")
-        if result.get("success"):
-            pos = result.get("position", {})
-            return {
-                "success": True,
-                "x": pos.get("x", 0),
-                "y": pos.get("y", 0),
-                "z": pos.get("z", 0),
-                "yaw": pos.get("yaw", 0),
-                "pitch": pos.get("pitch", 0),
-                "dimension": pos.get("dimension", "overworld")
-            }
-        return result
+    async def screenshot(self) -> bytes:
+        """获取截图"""
+        result = await self._call_api("screenshot")
+        if result.get("path"):
+            try:
+                with open(result["path"], "rb") as f:
+                    return f.read()
+            except:
+                pass
+        return b""
     
-    async def get_entities(self) -> List[Dict]:
-        """
-        获取周围实体
-        """
-        result = await self._call_api("entities")
-        if result.get("success"):
-            return result.get("entities", [])
-        return []
-    
-    async def get_blocks(self, x: int, y: int, z: int, width: int = 1, height: int = 1, depth: int = 1) -> List[Dict]:
-        """
-        获取指定区域的方块
-        """
-        result = await self._call_api(f"blocks/{x}/{y}/{z}?width={width}&height={height}&depth={depth}")
-        if result.get("success"):
-            return result.get("blocks", [])
-        return []
-    
-    # ==================== 动作控制 ====================
-    
-    async def chat(self, message: str) -> Dict:
-        """
-        发送聊天消息
-        """
-        return await self._call_api("chat", method="POST", data={"message": message})
+    # ==================== 动作执行 ====================
     
     async def move(self, direction: str = "forward", duration: float = 1.0) -> Dict:
         """
-        移动
+        移动 (调用 /command 端点)
         direction: forward, backward, left, right
-        duration: 持续时间(秒)
         """
-        return await self._call_api("move", method="POST", data={
-            "direction": direction,
-            "duration": duration
-        })
+        return await self._call_command(f"move {direction}")
     
     async def jump(self) -> Dict:
-        """
-        跳跃
-        """
-        return await self._call_api("jump", method="POST")
+        """跳跃"""
+        return await self._call_command("jump")
     
     async def attack(self, entityId: Optional[int] = None) -> Dict:
-        """
-        攻击实体
-        """
-        if entityId is not None:
-            return await self._call_api("attack", method="POST", data={"entityId": entityId})
-        return await self._call_api("attack", method="POST")
-    
-    async def place_block(self, position: Dict[str, int], block: str = "stone") -> Dict:
-        """
-        放置方块
-        position: {"x": 0, "y": 0, "z": 0}
-        block: 方块名称
-        """
-        return await self._call_api("place", method="POST", data={
-            "position": position,
-            "block": block
-        })
-    
-    async def use_item(self, slot: int) -> Dict:
-        """
-        使用物品栏中的物品
-        """
-        return await self._call_api("use", method="POST", data={"slot": slot})
-    
-    async def equip(self, item: str, destination: str = "hand") -> Dict:
-        """
-        装备物品
-        destination: hand, head, chest, legs, feet
-        """
-        return await self._call_api("equip", method="POST", data={
-            "item": item,
-            "destination": destination
-        })
-    
-    async def craft(self, recipe: str, count: int = 1) -> Dict:
-        """
-        合成物品
-        """
-        return await self._call_api("craft", method="POST", data={
-            "recipe": recipe,
-            "count": count
-        })
-    
-    # ==================== 截图功能 ====================
-    
-    async def screenshot(self, filename: Optional[str] = None) -> Dict[str, Any]:
-        """
-        截图
-        TODO: 需要实现截图功能
-        
-        返回:
-        {
-            "success": true,
-            "path": "screenshots/xxx.png",
-            "base64": "data:image/png;base64,..."
-        }
-        """
-        # 生成文件名
-        if filename is None:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"screenshot_{timestamp}.png"
-        
-        # 确保文件名有 .png 后缀
-        if not filename.endswith(".png"):
-            filename += ".png"
-        
-        filepath = self.screenshot_dir / filename
-        
+        """攻击"""
+        # 使用 /control/attack 端点
+        session = await self._get_session()
+        url = f"{self.api_url}/control/attack"
         try:
-            # 调用截图 API
-            result = await self._call_api("screenshot")
-            
-            if result.get("success") and result.get("base64"):
-                # 保存 base64 图片
-                image_data = result["base64"]
-                # 移除 data:image/png;base64, 前缀
-                if "," in image_data:
-                    image_data = image_data.split(",")[1]
-                
-                # 解码并保存
-                image_bytes = base64.b64decode(image_data)
-                with open(filepath, "wb") as f:
-                    f.write(image_bytes)
-                
-                return {
-                    "success": True,
-                    "path": str(filepath),
-                    "filename": filename,
-                    "base64": result["base64"]
-                }
-            else:
-                # API 不支持截图，返回错误信息
-                return {
-                    "success": False,
-                    "error": result.get("error", "Screenshot API not available"),
-                    "path": str(filepath),
-                    "filename": filename
-                }
-                
+            async with session.post(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                return await resp.json()
         except Exception as e:
-            return {
-                "success": False,
-                "error": str(e),
-                "path": str(filepath),
-                "filename": filename
-            }
+            return {"error": str(e), "success": False}
     
-    async def screenshot_base64(self) -> Optional[str]:
-        """
-        获取截图的 base64 编码（用于 LLM 视觉理解）
-        TODO: 需要实现
-        
-        返回 base64 字符串或 None
-        """
-        result = await self.screenshot()
-        if result.get("success"):
-            return result.get("base64")
-        return None
+    async def place_block(self, position: Dict[str, int] = None, block: str = "stone") -> Dict:
+        """放置方块"""
+        return await self._call_command(f"place {block}")
     
-    # ==================== 便捷方法 ====================
+    async def use_item(self, slot: int = None) -> Dict:
+        """使用物品"""
+        return await self._call_command("use")
     
-    async def connect(self) -> Dict:
-        """
-        连接服务器
-        TODO: 需要实现
-        
-        返回连接状态
-        """
-        return await self._call_api("connect", method="POST")
+    async def look(self, yaw: float = None, pitch: float = None) -> Dict:
+        """视角旋转"""
+        args = []
+        if yaw is not None:
+            args.append(str(yaw))
+        if pitch is not None:
+            args.append(str(pitch))
+        cmd = "look" + (" " + " ".join(args) if args else "")
+        return await self._call_command(cmd)
     
-    async def disconnect(self) -> Dict:
-        """
-        断开连接
-        """
-        return await self._call_api("disconnect", method="POST")
+    async def say(self, message: str) -> Dict:
+        """发送聊天"""
+        return await self._call_command(f"say {message}")
     
-    async def is_connected(self) -> bool:
-        """
-        检查是否连接到服务器
-        """
-        status = await self.get_status()
-        return status.get("success", False) and status.get("connected", False)
+    async def mine(self, block: str = "stone") -> Dict:
+        """挖掘"""
+        return await self._call_command(f"mine {block}")
     
-    async def wait_for_connection(self, timeout: float = 30.0, check_interval: float = 1.0) -> bool:
-        """
-        等待连接到服务器
-        """
-        start_time = datetime.now()
-        while (datetime.now() - start_time).total_seconds() < timeout:
-            if await self.is_connected():
-                return True
-            await asyncio.sleep(check_interval)
-        return False
+    async def craft(self, item: str, count: int = 1) -> Dict:
+        """合成"""
+        return await self._call_command(f"craft {item} {count}")
     
-    # ==================== 实用工具 ====================
+    async def stop(self) -> Dict:
+        """停止移动"""
+        return await self._call_command("stop")
     
-    async def look_at(self, x: float, y: float, z: float) -> Dict:
-        """
-        看向指定位置
-        """
-        return await self._call_api("look", method="POST", data={
-            "x": x, "y": y, "z": z
-        })
+    # ==================== 控制状态 ====================
     
-    async def set_hotbar_slot(self, slot: int) -> Dict:
+    async def set_control_state(self, forward: bool = False, backward: bool = False, 
+                                left: bool = False, right: bool = False, 
+                                jump: bool = False, sneak: bool = False) -> Dict:
         """
-        设置主手物品栏 slot (0-8)
+        设置控制状态（持续移动）
         """
-        return await self._call_api("hotbar", method="POST", data={"slot": slot})
-    
-    async def drop_item(self, count: int = -1) -> Dict:
-        """
-        丢弃物品
-        count: -1 表示全部
-        """
-        return await self._call_api("drop", method="POST", data={"count": count})
-    
-    async def consume(self) -> Dict:
-        """
-        消耗/吃/喝当前手持物品
-        """
-        return await self._call_api("consume", method="POST")
-    
-    async def open_block(self, x: int, y: int, z: int) -> Dict:
-        """
-        打开方块 (箱子、箱子等)
-        """
-        return await self._call_api(f"open_block/{x}/{y}/{z}", method="POST")
-    
-    async def open_entity(self, entityId: int) -> Dict:
-        """
-        打开实体界面 (村民交易等)
-        """
-        return await self._call_api(f"open_entity/{entityId}", method="POST")
-
-
-# 便捷函数
-def create_client(api_url: str = "http://localhost:3000", **kwargs) -> MineflayerClient:
-    """创建 Mineflayer 客户端"""
-    return MineflayerClient(api_url=api_url, **kwargs)
+        session = await self._get_session()
+        url = f"{self.api_url}/control/state"
+        data = {
+            "forward": forward,
+            "backward": backward,
+            "left": left,
+            "right": right,
+            "jump": jump,
+            "sneak": sneak
+        }
+        try:
+            async with session.post(url, json=data, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                return await resp.json()
+        except Exception as e:
+            return {"error": str(e), "success": False}
