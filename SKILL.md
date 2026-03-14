@@ -1,173 +1,122 @@
-# MineClaw SKILL.md
+# Voyager Minecraft Skill
 
-> Minecraft AI Agent 技能接口 - 让 AI 自主玩 Minecraft
+让 AI 能够像 Voyager 一样玩 Minecraft。
 
-## 快速开始
+## 架构
 
-```bash
-# 1. 安装依赖
-cd minecraft-agent
-npm install
-yarn install
-
-# 2. 配置 config.yml（必须）
-# - 填写你的 OpenAI API Key
-# - 设置 Minecraft 服务器信息
-
-# 3. 启动 Mineflayer Bot
-node scripts/start_bot.js --host java.applemc.fun --port 25565 --username YourBotName
-
-# 4. 使用 Agent（Python）
-python -c "
-from minecraft.agent import create_agent
-agent = create_agent()
-agent.run_task('去挖10块石头')
-"
 ```
-
----
-
-## 配置文件 config.yml
-
-```yaml
-# LLM 配置（必须）
-llm:
-  model: gpt-4o-mini              # 模型
-  endpoint: https://api.openai.com/v1  # API 端点
-  api_key: ${OPENAI_API_KEY}      # API 密钥（支持环境变量）
-  vision_base64: true             # 图片是否用 base64 编码
-
-# Minecraft 服务器
-minecraft:
-  host: java.applemc.fun
-  port: 25565
-  username: MineClaw
-  http_port: 3005                 # Mineflayer HTTP API 端口
-
-# Voyager 技能库（可选）
-voyager:
-  skill_library_path: ./data/skills.json
-  auto_save: true
+┌─────────────────────────────────────────────┐
+│         OpenClaw (我)                        │
+│  - 理解用户意图                              │
+│  - 下达任务                                  │
+│  - 监督/反思                                 │
+└──────────────────┬──────────────────────────┘
+                   │ 任务指令
+                   ▼
+┌─────────────────────────────────────────────┐
+│       Voyager Agent (本地运行)               │
+│  ┌─────────────────────────────────────────┐│
+│  │ Skill Library (终身学习)                ││
+│  │ - 存储学会的技能                         ││
+│  │ - 持续改进                               ││
+│  └─────────────────────────────────────────┘│
+│  ┌─────────────────────────────────────────┐│
+│  │ 循环: 观察 → 思考 → 执行 → 反思          ││
+│  └─────────────────────────────────────────┘│
+│  ┌─────────────────────────────────────────┐│
+│  │ Minecraft (Mineflayer)                  ││
+│  │ - 视觉输入                               ││
+│  │ - 动作执行                               ││
+│  └─────────────────────────────────────────┘│
+└─────────────────────────────────────────────┘
 ```
-
----
 
 ## 使用方式
 
-### 方式一：Python API
+### 1. 启动 Minecraft
 
-```python
-from minecraft.agent import create_agent
-
-# 创建 Agent
-agent = create_agent('config.yml')
-
-# 执行任务
-agent.run_task('去森林找一棵树然后砍掉')
+```
+1. 启动 Minecraft 1.19+
+2. 创建世界，设为创造模式
+3. ESC → 开放给 LAN
+4. 记住端口 (默认 25565)
 ```
 
-### 方式二：HTTP API（推荐）
-
-启动 Bot 后，用 curl 控制：
+### 2. 启动 Bot
 
 ```bash
-# 获取状态
-curl http://localhost:3005/status
-
-# 获取截图
-curl http://localhost:3005/screenshot -o screenshot.png
-
-# 移动
-curl -X POST http://localhost:3005/command?cmd=move%20forward
-
-# 放置方块
-curl -X POST http://localhost:3005/blocks/place -H "Content-Type: application/json" -d '{"name": "dirt"}'
-
-# 挖掘
-curl -X POST http://localhost:3005/mine -H "Content-Type: application/json" -d '{"block": "stone"}'
-
-# 合成
-curl -X POST http://localhost:3005/craft -H "Content-Type: application/json" -d '{"item": "stick", "count": 4}'
-
-# 攻击
-curl -X POST http://localhost:3005/control/attack
-
-# 聊天
-curl -X POST "http://localhost:3005/command?cmd=say%20Hello%20World"
+cd MineClaw
+npm install
+node scripts/start_bot.js --port 25565
 ```
 
----
+### 3. 我来控制
 
-## 可用动作
+你可以通过 QQ/Discord 给我下达任务，例如：
 
-| 动作 | 说明 | 示例 |
+- "去挖 10 块石头"
+- "造一个房子"
+- "杀掉附近的僵尸"
+
+我会：
+1. 理解任务
+2. 通过 HTTP API 控制 Bot
+3. 观察结果
+4. 反思改进
+
+## 技能库
+
+Agent 会从任务中学习，自动保存成功的策略到 `skills/library.json`。
+
+每次执行任务：
+- 观察游戏状态
+- 决定动作
+- 执行并观察结果
+- 成功? 存入技能库
+- 失败? 反思改进
+
+## API
+
+Bot 提供 HTTP API:
+
+```
+GET  /status      - 获取状态 (血量、位置等)
+GET  /inventory   - 获取物品栏
+GET  /screenshot  - 截图
+POST /command?cmd=<action> - 执行动作
+```
+
+## 动作
+
+| 动作 | 参数 | 说明 |
 |------|------|------|
-| `move <方向>` | 移动 | `move forward`, `move left` |
-| `jump` | 跳跃 | `jump` |
-| `attack` | 攻击/挖掘 | `attack` |
-| `place_block <方块>` | 放置方块 | `place_block dirt` |
-| `use_item` | 使用主手物品 | `use_item` |
-| `craft <物品>` | 合成 | `craft table` |
-| `mine <方块>` | 挖掘指定方块 | `mine stone` |
-| `look <yaw> <pitch>` | 视角旋转 | `look 90 0` |
-| `screenshot` | 获取截图 | `screenshot` |
-| `get_status` | 获取状态 | `get_status` |
-| `get_inventory` | 获取物品栏 | `get_inventory` |
+| move | direction, duration | 移动 |
+| jump | - | 跳跃 |
+| attack | target | 挖掘/攻击 |
+| place | x, y, z, block | 放置方块 |
+| craft | recipe, count | 合成 |
+| use | slot | 使用物品 |
+| look | yaw, pitch | 视角 |
 
----
-
-## 端点列表
-
-### 状态获取
-- `GET /status` - 生命值、饱食度、坐标
-- `GET /inventory` - 物品栏
-- `GET /screenshot` - 游戏截图
-- `GET /entities` - 附近的实体
-- `GET /chunks` - 加载的区块
-
-### 动作执行
-- `POST /command?cmd=<命令>` - 执行命令
-- `POST /control/state` - 控制移动/跳跃
-- `POST /control/attack` - 攻击
-- `POST /blocks/place` - 放置方块
-- `POST /mine` - 挖掘
-- `POST /craft` - 合成
-- `POST /items/use` - 使用物品
-- `POST /pathfinder/go` - 导航
-
----
-
-## 常见问题
-
-### Q: 连接不上服务器？
-- 检查服务器地址和端口是否正确
-- 确认服务器允许外链 bot 登录
-
-### Q: API 调用返回错误？
-- 确认 Mineflayer HTTP API 已启动（默认 localhost:3005）
-- 查看 Bot 控制台日志
-
-### Q: LLM 调用失败？
-- 检查 config.yml 中的 api_key 是否正确
-- 确认 endpoint 可访问
-
----
-
-## 架构图
+## 文件结构
 
 ```
-┌─────────────┐     ┌──────────────────┐     ┌────────────────┐
-│   用户       │────▶│   MinecraftAgent │────▶│ Mineflayer Bot │
-│ (发任务)    │     │   (LLM 决策)     │     │  (游戏执行)    │
-└─────────────┘     └──────────────────┘     └────────────────┘
-                           │
-                           ▼
-                    ┌──────────────────┐
-                    │    SkillLibrary  │
-                    │   ( Voyager 技能) │
-                    └──────────────────┘
+MineClaw/
+├── SKILL.md              # 本文件
+├── README.md
+├── package.json
+├── minecraft/
+│   ├── __init__.py
+│   ├── agent.py          # 基础 Agent
+│   ├── voyager.py        # Voyager 终身学习版 ⭐
+│   ├── mineflayer_client.py
+│   └── vision.py         # 视觉处理
+├── prompts/
+│   ├── system.txt        # 系统提示
+│   ├── action.txt        # 动作提示
+│   └── reflection.txt    # 反思提示
+├── skills/
+│   └── library.json      # 技能库 (自动生成)
+└── scripts/
+    └── start_bot.js      # Bot 启动
 ```
-
----
-
-**需要帮助？** 随时问我！🎮
