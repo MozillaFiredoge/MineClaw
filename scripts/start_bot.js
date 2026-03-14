@@ -187,11 +187,19 @@ const actions = {
   
   // 跳跃
   jump: () => {
-    if (bot.canJump()) {
-      bot.jump();
+    try {
+      // 使用 setControlState 跳跃
+      bot.setControlState('jump', true);
+      // 100ms 后释放
+      setTimeout(() => {
+        try {
+          bot.setControlState('jump', false);
+        } catch (e) {}
+      }, 100);
       return { success: true };
+    } catch (e) {
+      return { success: false, error: e.message };
     }
-    return { success: false, error: 'Cannot jump' };
   },
   
   // 攻击/挖掘
@@ -257,8 +265,28 @@ const actions = {
   
   // 发送聊天
   say: (message) => {
-    bot.chat(message);
-    return { success: true };
+    try {
+      // 尝试多种方式发送聊天
+      if (typeof bot.chat === 'function') {
+        bot.chat(message);
+        return { success: true };
+      } else if (bot._client && typeof bot._client.writeChat === 'function') {
+        bot._client.writeChat(message);
+        return { success: true };
+      } else {
+        // 使用命令方式发送
+        bot._client.write(`say ${message}`);
+        return { success: true };
+      }
+    } catch (e) {
+      // 使用命令方式作为后备
+      try {
+        bot.executeCommand(`/say ${message}`);
+        return { success: true };
+      } catch (e2) {
+        return { success: false, error: e2.message };
+      }
+    }
   },
   
   // 状态
