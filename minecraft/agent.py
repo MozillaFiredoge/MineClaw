@@ -282,9 +282,58 @@ class MinecraftAgent:
                 print(f"⚡ 执行: {action}")
                 result = self.execute(action)
                 print(f"📋 结果: {result}")
+                
+                # 检查是否完成任务
+                # 让 LLM 判断是否需要继续
+                check_context = {
+                    "status": status,
+                    "inventory": inventory,
+                    "last_action": action,
+                    "last_result": result,
+                    "original_task": task
+                }
+                
+                # 让 LLM 判断任务是否完成
+                check_prompt = f"""
+任务: {task}
+刚才执行的动作: {action}
+执行结果: {result}
+当前状态: {status}
+当前物品栏: {inventory}
+
+请判断任务是否已经完成。如果完成了，返回:
+```json
+{{"action": "finished", "completed": true, "reason": "原因"}}
+```
+
+如果还没完成，需要继续，返回:
+```json
+{{"action": "下一步动作", "reason": "为什么"}}
+```
+
+只返回 JSON，不要其他内容。
+"""
+                check_decision = self.think(check_prompt, None, check_context)
+                print(f"🔄 检查任务状态: {check_decision}")
+                
+                # 检查是否完成
+                try:
+                    import re
+                    check_match = re.search(r'```json\s*(\{.*?\})\s*```', check_decision, re.DOTALL)
+                    if not check_match:
+                        check_match = re.search(r'(\{.*?\})', check_decision, re.DOTALL)
+                    if check_match:
+                        check_data = json.loads(check_match.group(1))
+                        if check_data.get('completed', False):
+                            print(f"✅ 任务完成: {check_data.get('reason', '')}")
+                            return {"success": True, "steps": step + 1, "reason": check_data.get('reason', '')}
+                except:
+                    pass
             
-            # 简单判断：只执行一次
-            break
+            # 最多执行 max_steps 次
+            if step >= max_steps - 1:
+                print(f"⚠️ 达到最大步数 {max_steps}，停止")
+                break
             
         return {"success": True, "steps": step + 1}
 
