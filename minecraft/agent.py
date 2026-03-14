@@ -43,18 +43,18 @@ class MinecraftAgent:
         self.host = mc_config.get('host', 'java.applemc.fun')
         self.port = mc_config.get('port', 25565)
         self.username = mc_config.get('username', 'MineClaw')
-        # HTTP API 端口
+        # HTTP API 配置
         api_config = self.config.get('api', {})
+        self.api_host = api_config.get('host', 'localhost')
         self.http_port = api_config.get('port', 3005)
+        self.api_url = f"http://{self.api_host}:{self.http_port}"
         
         # Voyager 配置
         voyager_config = self.config.get('voyager', {})
         self.skill_library_path = voyager_config.get('skill_library_path', './data/skills.json')
         
         # 初始化客户端
-        self.client = MineflayerClient(
-            api_url=f"http://localhost:{self.http_port}"
-        )
+        self.client = MineflayerClient(api_url=self.api_url)
         
         # 初始化技能库
         self.skill_library = SkillLibrary(self.skill_library_path)
@@ -175,7 +175,7 @@ class MinecraftAgent:
         action_name = parts[0] if parts else ""
         action_params = " ".join(parts[1:]) if len(parts) > 1 else ""
         
-        base_url = f"http://localhost:{self.http_port}"
+        base_url = self.api_url
         
         try:
             if action_name == "move":
