@@ -1,23 +1,39 @@
 """
 Minecraft Voyager Agent - 终身学习版
 像 Voyager 一样：视觉理解 → LLM决策 → 动作执行 → 反思学习
+
+核心概念：
+- Skill: 可复用的代码块，而非动作序列
+- 技能库: 存储和管理学到的技能，用于终身学习
 """
 
 import json
 import os
 import time
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Callable
 from dataclasses import dataclass, asdict
 from datetime import datetime
 
 
 @dataclass
 class Skill:
-    """学会的技能"""
+    """
+    学会的技能 - 可复用的代码块
+    
+    不同于动作集合，Skill 是一个可执行的函数/代码片段：
+    - name: 技能名称
+    - description: 技能描述
+    - code: 可执行的 Python 代码（包含检查条件、执行逻辑）
+    - success_rate: 历史成功率
+    - attempts: 尝试次数
+    - successes: 成功次数
+    - created_at: 创建时间
+    - last_used: 上次使用时间
+    """
     name: str
     description: str
-    code: str  # 可执行的代码或动作序列
+    code: str  # 可执行的 Python 代码，而非动作序列
     success_rate: float = 0.0
     attempts: int = 0
     successes: int = 0
@@ -27,10 +43,20 @@ class Skill:
     def __post_init__(self):
         if not self.created_at:
             self.created_at = datetime.now().isoformat()
+    
+    def to_executable(self) -> str:
+        """转换为可执行的代码模板"""
+        return f"""
+# Skill: {self.name}
+# Description: {self.description}
+# Success Rate: {self.success_rate:.1%}
+
+{self.code}
+"""
 
 
 class SkillLibrary:
-    """技能库 - 存储和管理学到的技能"""
+    """技能库 - 存储和管理学到的技能（可复用代码）"""
     
     def __init__(self, storage_path: str = "./skills"):
         self.storage_path = Path(storage_path)
@@ -50,6 +76,32 @@ class SkillLibrary:
     def list_skills(self) -> List[Skill]:
         """列出所有技能"""
         return list(self.skills.values())
+    
+    def find_similar(self, task: str) -> Optional[Skill]:
+        """
+        查找与任务相似的技能（用于复用）
+        使用简单的关键词匹配
+        """
+        task_lower = task.lower()
+        best_match = None
+        best_score = 0
+        
+        for skill in self.skills.values():
+            # 简单的相似度计算
+            skill_name_lower = skill.name.lower()
+            
+            # 完全匹配
+            if task_lower == skill_name_lower:
+                return skill
+            
+            # 包含匹配
+            if task_lower in skill_name_lower or skill_name_lower in task_lower:
+                score = min(len(task_lower), len(skill_name_lower))
+                if score > best_score:
+                    best_score = score
+                    best_match = skill
+        
+        return best_match
     
     def update_stats(self, name: str, success: bool):
         """更新技能统计"""

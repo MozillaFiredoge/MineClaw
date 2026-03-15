@@ -311,15 +311,91 @@ const actions = {
     }
   },
   
-  // 状态
+  // 获取更详细的状态信息
   get_status: () => {
+    // 获取附近的实体
+    const entities = [];
+    if (bot.entities) {
+      for (const [id, entity] of Object.entries(bot.entities)) {
+        if (entity && entity.position) {
+          const dist = Math.sqrt(
+            Math.pow(entity.position.x - bot.entity.position.x, 2) +
+            Math.pow(entity.position.y - bot.entity.position.y, 2) +
+            Math.pow(entity.position.z - bot.entity.position.z, 2)
+          );
+          if (dist < 16) { // 16格范围内
+            entities.push({
+              name: entity.name || entity.mobName || 'unknown',
+              type: entity.type || 'unknown',
+              position: {
+                x: Math.floor(entity.position.x),
+                y: Math.floor(entity.position.y),
+                z: Math.floor(entity.position.z)
+              },
+              distance: Math.floor(dist)
+            });
+          }
+        }
+      }
+    }
+
+    // 获取附近的方块 (使用 voxel 类算法扫描)
+    const nearbyBlocks = [];
+    if (bot.entity && bot.world) {
+      const pos = bot.entity.position;
+      const scanRange = 4; // 4格范围内
+      for (let x = Math.floor(pos.x) - scanRange; x <= Math.floor(pos.x) + scanRange; x++) {
+        for (let y = Math.floor(pos.y) - scanRange; y <= Math.floor(pos.y) + scanRange; y++) {
+          for (let z = Math.floor(pos.z) - scanRange; z <= Math.floor(pos.z) + scanRange; z++) {
+            try {
+              const block = bot.world.getBlock(x, y, z);
+              if (block && block.name && block.name !== 'air') {
+                nearbyBlocks.push({
+                  name: block.name,
+                  position: { x, y, z },
+                  hardness: block.hardness
+                });
+              }
+            } catch (e) {
+              // 忽略错误
+            }
+          }
+        }
+      }
+    }
+
+    // 获取当前手持物品
+    const heldItem = bot.heldItem ? {
+      name: bot.heldItem.name,
+      count: bot.heldItem.count,
+      displayName: bot.heldItem.displayName
+    } : null;
+
+    // 获取时间 (游戏 tick)
+    const time = bot.time ? {
+      age: bot.time.age,
+      timeOfDay: bot.time.timeOfDay,
+      isDay: bot.time.timeOfDay < 12000 || bot.time.timeOfDay > 24000
+    } : null;
+
+    // 获取天气
+    const weather = {
+      isRaining: bot.isRaining || false,
+      isThunder: bot.isThunder || false
+    };
+
     return {
       health: state.health,
       food: state.food,
       position: state.position,
-      inventory: state.inventory,
       dimension: bot.game?.dimension || 'unknown',
-      gameMode: bot.game?.gameMode || 'unknown'
+      gameMode: bot.game?.gameMode || 'unknown',
+      heldItem: heldItem,
+      time: time,
+      weather: weather,
+      nearbyEntities: entities.slice(0, 20), // 最多20个实体
+      nearbyBlocks: nearbyBlocks.slice(0, 50), // 最多50个方块
+      version: bot.game?.version || 'unknown'
     };
   },
   
@@ -328,43 +404,7 @@ const actions = {
     return { items: state.inventory };
   },
   
-  // 截图 - 使用 prismarine-viewer
-  screenshot: async () => {
-    if (mineflayerViewer) {
-      // 返回 viewer URL
-      return { 
-        viewer: 'http://localhost:3007',
-        note: '使用第一人称视角查看器'
-      };
-    }
-    
-    // 后备：使用外部截图工具
-    const screenshotDir = path.join(__dirname, '..', 'screenshots');
-    if (!fs.existsSync(screenshotDir)) {
-      fs.mkdirSync(screenshotDir, { recursive: true });
-    }
-    
-    const filename = `screenshot_${Date.now()}.png`;
-    const filepath = path.join(screenshotDir, filename);
-    
-    const screenshotTools = ['gnome-screenshot', 'scrot', 'import', 'screencapture', 'maim'];
-    
-    for (const tool of screenshotTools) {
-      try {
-        const { execSync } = require('child_process');
-        execSync(`${tool} "${filepath}"`, { timeout: 5000 });
-        if (fs.existsSync(filepath)) {
-          state.lastScreenshot = filepath;
-          console.log(`[Mineflayer] 📷 Screenshot saved: ${filepath}`);
-          return { path: filepath, tool };
-        }
-      } catch (e) {
-        continue;
-      }
-    }
-    
-    return { error: 'No screenshot tool available. Install gnome-screenshot, scrot, or ImageMagick.' };
-  },
+
   
   // 停止移动
   stop: () => {
@@ -484,18 +524,20 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     
-    // GET /screenshot
+    // GET /screenshot - 已废弃，headless 模式无截图
     if (method === 'GET' && pathname === '/screenshot') {
-      const result = await actions.screenshot();
-      res.end(JSON.stringify(result));
+      res.end(JSON.stringify({ 
+        error: 'Screenshot disabled in headless mode',
+        reason: 'mineflayer is headless, no actual game instance running'
+      }));
       return;
     }
     
-    // GET /render (POV)
+    // GET /render (POV) - 已废弃
     if (method === 'GET' && pathname === '/render') {
       res.end(JSON.stringify({ 
-        note: 'Use external screenshot tool',
-        endpoint: '/screenshot'
+        error: 'Screenshot disabled in headless mode',
+        reason: 'mineflayer is headless, no actual game instance running'
       }));
       return;
     }

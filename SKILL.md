@@ -12,7 +12,7 @@ OpenClaw (我)  →  Agent (Python)  →  Mineflayer Bot (Node.js)  →  Minecra
 **职责分工：**
 - **OpenClaw (我)**: 只负责给 Agent 下**高层次任务命令**，验收结果
 - **Agent**: 接收任务，调用 LLM 决策，自动执行动作直到完成
-- **Mineflayer**: 实际在 Minecraft 中执行动作
+- **Mineflayer**: 实际在 Minecraft 中执行动作（headless 模式）
 
 ---
 
@@ -31,27 +31,77 @@ from minecraft.agent import create_agent
 # 创建 Agent
 agent = create_agent()
 
-# 发号施令 - 给高层次任务，而不是具体动作
-agent.run_task("建一个房子")      # 让 Agent 自己规划和执行
-agent.run_task("去挖10块石头")    # Agent 会自己判断怎么挖
-agent.run_task("杀掉附近的僵尸")  # Agent 会自己找僵尸并攻击
-agent.run_task("探索周围环境")    # Agent 会自己探索
+# 发号施令 - 给高层次任务
+agent.run_task("建一个房子")
+agent.run_task("去挖10块石头")
+agent.run_task("杀掉附近的僵尸")
 ```
-
-**注意：** 是 `run_task("任务")` 而不是 `execute("move forward")`
 
 ---
 
-## 可用任务命令
+## 增强的 Status 信息
 
-| 命令 | 说明 |
-|------|------|
-| `建一个房子` | 自动收集材料并建造房子 |
-| `去挖石头` | 挖掘指定数量石头 |
-| `去砍树` | 找到树并砍倒 |
-| `杀僵尸` | 找到并击杀僵尸 |
-| `烤食物` | 找动物、杀、烤熟 |
-| `找钻石` | 探索矿井寻找钻石 |
+`/status` 端点现在返回丰富的环境信息：
+
+```json
+{
+  "health": 20,
+  "food": 20,
+  "position": {"x": 0, "y": 64, "z": 0},
+  "dimension": "minecraft:overworld",
+  "gameMode": "survival",
+  "heldItem": {"name": "minecraft:iron_pickaxe", "count": 1},
+  "time": {"age": 1000, "timeOfDay": 6000, "isDay": true},
+  "weather": {"isRaining": false, "isThunder": false},
+  "nearbyEntities": [
+    {"name": "zombie", "position": {"x": 5, "y": 64, "z": 3}, "distance": 5}
+  ],
+  "nearbyBlocks": [
+    {"name": "minecraft:stone", "position": {"x": 1, "y": 63, "z": 0}, "hardness": 1.5}
+  ],
+  "version": "1.20.4"
+}
+```
+
+**新增字段：**
+- `heldItem` - 当前手持物品
+- `time` - 游戏时间
+- `weather` - 天气状况
+- `nearbyEntities` - 附近实体（玩家、动物、怪物等），最多20个
+- `nearbyBlocks` - 附近方块（4格范围内），最多50个
+- `version` - 游戏版本
+
+---
+
+## Skill（技能）系统
+
+Skill 是**可复用的代码**，而非简单的动作序列：
+
+```python
+# Skill 示例：挖石头
+# === 检查条件 ===
+def check(context):
+    status = context.get('status', {})
+    nearby = status.get('nearbyBlocks', [])
+    return any(b['name'] == 'minecraft:stone' for b in nearby)
+
+# === 执行动作 ===
+def execute(agent):
+    agent.execute('move forward')
+    agent.execute('attack')
+
+# === 验证成功 ===
+def verify(context):
+    inventory = context.get('inventory', {})
+    items = inventory.get('items', [])
+    stone = sum(i.get('count',0) for i in items if 'stone' in i.get('name',''))
+    return stone >= 10
+```
+
+**特点：**
+1. **检查条件** - 判断当前环境是否适合使用该技能
+2. **执行逻辑** - 具体的动作步骤
+3. **验证逻辑** - 如何判断任务成功完成
 
 ---
 
@@ -75,17 +125,34 @@ api:
 
 ---
 
+## API 端点
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/status` | GET | 获取增强后的游戏状态（包含附近方块、实体等） |
+| `/inventory` | GET | 获取物品栏 |
+| `/command?cmd=<action>` | POST | 执行动作 |
+| `/control/state` | POST | 设置移动控制状态 |
+| `/control/attack` | POST | 攻击 |
+
+**已废弃：**
+- `/screenshot` - headless 模式无截图
+- `/render` - headless 模式无渲染
+
+---
+
 ## 工作流程
 
 ```
-我: "建一个房子"
+我: "去挖10块石头"
 
 Agent:
-  1. 获取截图 + 状态
+  1. 获取 status（包含附近方块信息）
   2. LLM 分析场景 → 决策
-  3. 执行动作 (砍树 → 收集木头 → 造木块 → 放置)
-  4. 循环直到任务完成
-  5. 返回结果给我
+  3. 执行动作
+  4. 检查物品栏判断是否完成
+  5. 成功则存入技能库（生成可复用代码）
+  6. 返回结果
 
 我: 验收结果
 ```
@@ -94,6 +161,6 @@ Agent:
 
 ## 注意事项
 
-1. **用 run_task() 而不是 execute()** - 任务级别的命令
-2. **不要用 curl 直接访问 Mineflayer** - 那是 Agent 的工作
-3. **需要先启动 Bot** 才能发指令
+1. **用 run_task()** - 任务级别的命令，不是具体动作
+2. **headless 模式** - 没有截图，使用文本状态进行决策
+3. **Skill 是代码** - 不是动作序列，包含检查/执行/验证逻辑
