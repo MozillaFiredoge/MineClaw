@@ -11,7 +11,7 @@ import json
 import os
 import time
 from pathlib import Path
-from typing import Optional, Dict, Any, List, Callable
+from typing import Optional, Dict, Any, List
 from dataclasses import dataclass, asdict
 from datetime import datetime
 
@@ -39,10 +39,13 @@ class Skill:
     successes: int = 0
     created_at: str = ""
     last_used: str = ""
+    tags: List[str] = None
     
     def __post_init__(self):
         if not self.created_at:
             self.created_at = datetime.now().isoformat()
+        if self.tags is None:
+            self.tags = []
     
     def to_executable(self) -> str:
         """转换为可执行的代码模板"""
@@ -59,8 +62,15 @@ class SkillLibrary:
     """技能库 - 存储和管理学到的技能（可复用代码）"""
     
     def __init__(self, storage_path: str = "./skills"):
-        self.storage_path = Path(storage_path)
-        self.storage_path.mkdir(exist_ok=True)
+        path = Path(storage_path)
+        if path.suffix == ".json":
+            self.storage_dir = path.parent
+            self.library_file = path
+        else:
+            self.storage_dir = path
+            self.library_file = path / "library.json"
+
+        self.storage_dir.mkdir(parents=True, exist_ok=True)
         self.skills: Dict[str, Skill] = {}
         self.load()
         
@@ -82,13 +92,17 @@ class SkillLibrary:
         查找与任务相似的技能（用于复用）
         使用简单的关键词匹配
         """
-        task_lower = task.lower()
+        task_lower = task.lower().strip()
+        task_tokens = self._tokenize(task_lower)
         best_match = None
-        best_score = 0
+        best_score = 0.0
         
         for skill in self.skills.values():
             # 简单的相似度计算
-            skill_name_lower = skill.name.lower()
+            skill_name_lower = skill.name.lower().strip()
+            description_lower = skill.description.lower().strip()
+            keyword_space = " ".join([skill_name_lower, description_lower, " ".join(skill.tags)])
+            skill_tokens = self._tokenize(keyword_space)
             
             # 完全匹配
             if task_lower == skill_name_lower:
@@ -96,12 +110,34 @@ class SkillLibrary:
             
             # 包含匹配
             if task_lower in skill_name_lower or skill_name_lower in task_lower:
-                score = min(len(task_lower), len(skill_name_lower))
-                if score > best_score:
-                    best_score = score
-                    best_match = skill
-        
-        return best_match
+                score = 0.8
+            elif any(tag and tag.lower() in task_lower for tag in skill.tags):
+                score = 0.7
+            elif any(token and token in task_lower for token in skill_tokens if len(token) >= 2):
+                score = 0.6
+            else:
+                overlap = len(task_tokens & skill_tokens)
+                denominator = len(task_tokens | skill_tokens) or 1
+                score = overlap / denominator
+
+            score += skill.success_rate * 0.2
+
+            if score > best_score:
+                best_score = score
+                best_match = skill
+
+        if best_match and best_score >= 0.25:
+            return best_match
+
+        return None
+
+    @staticmethod
+    def _tokenize(text: str) -> set:
+        separators = ["_", "-", ",", ".", ":", "，", "。", "：", "！", "?", "(", ")"]
+        normalized = text
+        for sep in separators:
+            normalized = normalized.replace(sep, " ")
+        return {token for token in normalized.split() if token}
     
     def update_stats(self, name: str, success: bool):
         """更新技能统计"""
@@ -117,14 +153,13 @@ class SkillLibrary:
     def save(self):
         """保存到文件"""
         data = {name: asdict(skill) for name, skill in self.skills.items()}
-        with open(self.storage_path / "library.json", "w") as f:
-            json.dump(data, f, indent=2)
+        with open(self.library_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
             
     def load(self):
         """从文件加载"""
-        path = self.storage_path / "library.json"
-        if path.exists():
-            with open(path) as f:
+        if self.library_file.exists():
+            with open(self.library_file, encoding="utf-8") as f:
                 data = json.load(f)
                 self.skills = {name: Skill(**s) for name, s in data.items()}
 
